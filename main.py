@@ -216,6 +216,26 @@ class GenerateTab(QWidget):
                 self.filename_combo.addItem(f"使用[{placeholder}]作为文件名")
             
             self.generate_btn.setEnabled(True)
+            
+            if not self.placeholders:
+                QMessageBox.information(
+                    self, "模板加载完成",
+                    f"✅ 模板已成功加载\n\n"
+                    f"⚠️ 注意：当前模板中没有检测到占位符\n\n"
+                    f"📝 如果需要自动替换内容，请在Word模板中使用以下格式：\n"
+                    f"   - 姓名：{{姓名}}\n"
+                    f"   - 电话：{{手机号}}\n"
+                    f"   - 日期：{{日期}}\n\n"
+                    f"💡 使用 {{占位符名}} 格式标记需要替换的位置，然后重新选择模板。"
+                )
+            else:
+                QMessageBox.information(
+                    self, "模板加载成功",
+                    f"✅ 成功加载模板\n\n"
+                    f"📋 检测到 {len(self.placeholders)} 个占位符：\n\n"
+                    + "\n".join([f"  • {{{ph}}}" for ph in self.placeholders]) +
+                    f"\n\n💡 现在可以选择数据来源（Excel导入或手动输入）进行批量生成！"
+                )
         
         except Exception as e:
             QMessageBox.warning(self, "错误", f"无法读取模板: {str(e)}")
@@ -236,14 +256,47 @@ class GenerateTab(QWidget):
             self.excel_widget.show()
             self.manual_widget.hide()
         else:
+            if not self.template_path:
+                QMessageBox.information(
+                    self, "使用提示",
+                    "📋 使用手动输入功能前，请先完成以下步骤：\n\n"
+                    "1. 点击上方的【浏览...】按钮选择一个Word模板文件\n"
+                    "2. 模板文件中需要使用 {占位符名} 格式标记需要替换的内容\n\n"
+                    "📝 模板格式示例：\n"
+                    "   - 姓名：{姓名}\n"
+                    "   - 联系电话：{手机号}\n"
+                    "   - 签订日期：{日期}\n\n"
+                    "💡 提示：先选择模板，程序会自动识别模板中的占位符！"
+                )
+                self.data_source_combo.setCurrentIndex(0)
+                return
+            
+            if not self.placeholders:
+                QMessageBox.warning(
+                    self, "提示",
+                    "当前选中的模板中没有检测到占位符。\n\n"
+                    "请在Word模板中使用 {占位符名} 格式标记需要替换的内容。\n\n"
+                    "例如：\n"
+                    "  - 姓名：{姓名}\n"
+                    "  - 联系电话：{手机号}"
+                )
+                self.data_source_combo.setCurrentIndex(0)
+                return
+            
             self.excel_widget.hide()
             self.manual_widget.show()
             self._update_manual_table()
     
     def _update_manual_table(self):
+        if not self.placeholders:
+            self.placeholder_table.setRowCount(0)
+            return
+        
         self.placeholder_table.setRowCount(len(self.placeholders))
         for i, ph in enumerate(self.placeholders):
-            self.placeholder_table.setItem(i, 0, QTableWidgetItem(ph))
+            placeholder_item = QTableWidgetItem(ph)
+            placeholder_item.setFlags(placeholder_item.flags() & ~Qt.ItemIsEditable)
+            self.placeholder_table.setItem(i, 0, placeholder_item)
             self.placeholder_table.setItem(i, 1, QTableWidgetItem(""))
     
     def select_excel(self):
@@ -299,9 +352,13 @@ class GenerateTab(QWidget):
         data = {}
         for i in range(self.placeholder_table.rowCount()):
             placeholder_item = self.placeholder_table.item(i, 0)
+            if not placeholder_item:
+                continue
+            
+            placeholder = placeholder_item.text()
             value_item = self.placeholder_table.item(i, 1)
-            if placeholder_item and value_item:
-                data[placeholder_item.text()] = value_item.text()
+            value = value_item.text().strip() if value_item else ""
+            data[placeholder] = value
         return data
     
     def generate_documents(self):
